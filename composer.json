@@ -1,0 +1,41 @@
+{
+  "name": "k90mirzaei/media",
+  "type": "library",
+  "description": "This is a media handler with intervention",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Kazem Mirzaei",
+      "email": "k90mirzaei@gmail.com"
+    }
+  ],
+  "require": {
+    "php": ">=7.4",
+    "intervention/image": "^2.7",
+    "ext-json": "*",
+    "ext-fileinfo": "*"
+  },
+  "require-dev": {
+    "orchestra/testbench": "^6.23"
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit"
+  },
+  "autoload": {
+    "psr-4": {
+      "k90mirzaei\\Media\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "k90mirzaei\\Media\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "k90mirzaei\\Media\\BaseServiceProvider"
+      ]
+    }
+  }
+}
