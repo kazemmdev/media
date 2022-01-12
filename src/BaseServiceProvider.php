@@ -4,7 +4,8 @@ namespace k90mirzaei\Media;
 
 use Illuminate\Support\ServiceProvider;
 use k90mirzaei\Media\Console\CleanCommand;
-use k90mirzaei\Media\Support\UrlGenerator;
+use k90mirzaei\Media\Support\Generators\WidthsGenerator;
+use k90mirzaei\Media\Support\Generators\UrlGenerator;
 
 class BaseServiceProvider extends ServiceProvider
 {
@@ -17,6 +18,10 @@ class BaseServiceProvider extends ServiceProvider
     {
         $this->app->bind('UrlGenerator', function () {
             return new UrlGenerator();
+        });
+
+        $this->app->bind('WidthsGenerator', function () {
+            return new WidthsGenerator();
         });
 
         $this->registerCommands();

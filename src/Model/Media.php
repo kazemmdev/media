@@ -5,6 +5,8 @@ namespace k90mirzaei\Media\Model;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Facades\Image;
+use k90mirzaei\Media\Exception\MediaDimensionInfeasible;
 use k90mirzaei\Media\Facade\UrlGenerator;
 
 class Media extends Model
@@ -20,7 +22,7 @@ class Media extends Model
         return $this->morphTo();
     }
 
-    public function getType(): string
+    public function getExtension(): string
     {
         $array = explode('/', $this->mime_type);
 
@@ -29,7 +31,7 @@ class Media extends Model
 
     public function getFileName(): string
     {
-        return "{$this->file_name}.{$this->getType()}";
+        return "{$this->file_name}.{$this->getExtension()}";
     }
 
     public function getPath(): string
@@ -79,17 +81,23 @@ class Media extends Model
 
     public function getDimensions(): array
     {
-        if (!($image = \Intervention\Image\Facades\Image::make($this->getUrl())))
-            throw new \Exception('در بارگذاری تصویر خطای رخ داده لطفا مجددا تلاش بفرمایید', 500);
+        if (strpos($this->mime_type, 'image') === false) {
+            throw MediaDimensionInfeasible::create();
+        }
 
-        return ['h' => $image->height(), 'w' => $image->width()];
+        $image = Image::make($this->getUrl());
+
+        return [
+            'height' => $image->height(),
+            'width' => $image->width()
+        ];
     }
 
     public function getAspect(): float
     {
         $dim = $this->getDimensions();
 
-        return $dim ? 100 * $dim['h'] / $dim['w'] : 66.6;
+        return $dim ? 100 * $dim['height'] / $dim['width'] : 66.6;
     }
 
     public function delete(): bool

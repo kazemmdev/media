@@ -1,6 +1,6 @@
 <?php
 
-namespace k90mirzaei\Media\Support;
+namespace k90mirzaei\Media\Support\Generators;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;

@@ -5,332 +5,181 @@ namespace k90mirzaei\Media\Support;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\File;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
-use Intervention\Image\ImageManager;
+use k90mirzaei\Media\Exception\ConfigDoesNotExist;
 use k90mirzaei\Media\Exception\DiskDoesNotExist;
 use k90mirzaei\Media\Exception\FileTooBig;
-use k90mirzaei\Media\Exception\MediaCannotBeFetched;
+use k90mirzaei\Media\Exception\MediaFormatDoesNotExist;
 use k90mirzaei\Media\Exception\MimeTypeNotAllowed;
+use k90mirzaei\Media\Exception\MimeTypeNotDefined;
 use k90mirzaei\Media\Exception\UnknownType;
 use k90mirzaei\Media\Model\Media;
 use k90mirzaei\Media\Model\MediaCollection;
+use k90mirzaei\Media\Support\Formats\MediaFormat;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 class FileAdder
 {
     protected $file;
 
-    protected $rawFile;
-
-    protected $fileSize;
-
-    protected $storage;
-
-    protected $imageManager;
-
-    protected $allowedMimeTypes;
-
     protected ?Model $subject;
 
-    protected string $mimeType = '';
+    protected int $fileSize;
 
-    protected string $fileName = '';
+    protected string $fileName;
 
-    protected string $pathToFile = '';
+    protected string $mimeType;
 
-    protected string $fileExtension = '';
+    protected string $extension;
 
-    public function setSubject(Model $subject): self
+    protected string $diskName;
+
+    protected array $allowedMimeTypes;
+
+    protected MediaFormat $mediaFormat;
+
+    public function setSubject(Model $model): self
     {
-        $this->subject = $subject;
+        $this->subject = $model;
 
         return $this;
     }
 
     public function setFile($file): self
     {
-        $this->rawFile = $file;
-        $this->fileName = uniqid();
-        $this->imageManager = new ImageManager();
+        $this->file = $file;
 
-        if (is_string($file)) {
-            $this->fileExtension = $this->getExtensionFromURL();
-            $this->mimeType = 'image/' . $this->fileExtension;
-
-            return $this;
-        }
-
-        if ($file instanceof UploadedFile) {
-            $this->fileExtension = $file->getClientOriginalExtension();
-            $this->mimeType = 'image/' . $this->fileExtension;
-
-            return $this;
-        }
-
-        throw UnknownType::create();
+        return $this;
     }
 
     /**
-     * @throws MediaCannotBeFetched
-     * @throws FileTooBig
+     * @throws UnknownType
      * @throws MimeTypeNotAllowed
+     * @throws MediaFormatDoesNotExist
+     * @throws ConfigDoesNotExist
      * @throws DiskDoesNotExist
+     * @throws MimeTypeNotDefined
+     * @throws FileTooBig
      */
     public function toMediaCollection(string $collectionName = 'default', string $diskName = ''): Media
     {
-        $diskName = $this->determineDiskName($diskName, $collectionName);
-
-        if (!$this->ensureDiskExists($diskName)) {
-            throw DiskDoesNotExist::create($diskName);
+        if (is_null(config('media'))) {
+            throw ConfigDoesNotExist::create();
         }
 
-        $this->storage = Storage::disk($diskName);
+        $this->extension = $this->getExtension();
 
-        if (!$this->subject->exists) {
-            throw MediaCannotBeFetched::create();
+        $this->mimeType = $this->getMimeType();
+
+        if (!$this->isValidatedMimeType($collectionName)) {
+            throw MimeTypeNotAllowed::create($this->extension, $this->allowedMimeTypes);
         }
 
-        if (!$this->isValidSize($collectionName)) {
-            throw FileTooBig::create($this->pathToFile, $this->storage->size($this->pathToFile));
+        if (!$this->isValidatedFileSize($collectionName)) {
+            throw FileTooBig::create($this->fileSize);
         }
 
-        if (!$this->isValidMimetype($collectionName)) {
-            throw MimeTypeNotAllowed::create($this->file, $this->allowedMimeTypes);
+        if (!$this->isValidatedDisk($diskName, $collectionName)) {
+            throw DiskDoesNotExist::create($this->diskName);
         }
 
         $media = Media::create([
             'model_id' => $this->subject->id,
             'model_type' => get_class($this->subject),
-            'file_name' =>  $this->fileName,
-            'mime_type' =>   $this->mimeType,
             'collection_name' => $collectionName,
-            'disk' => $diskName,
-            'file' => $this->getTemporaryFile($collectionName),
+            'file_name' => $this->fileName = uniqid(),
+            'mime_type' => $this->mimeType,
+            'size' => $this->fileSize,
+            'disk' => $this->diskName,
         ]);
 
-        $this->attachMedia($media);
+        $this->attachMedia($media, $collectionName);
 
         return $media;
     }
 
-
-    protected function isValidSize(string $collectionName = 'default'): bool
+    protected function getExtension()
     {
-        if (is_string($this->rawFile)) {
-            $header = get_headers($this->rawFile, 1);
-            $size = $header["Content-Length"] ?? 0;
+        if (is_string($this->file))
+            return pathinfo($this->file, PATHINFO_EXTENSION);
 
-            return $size <= config('media.max_file_size');
-        }
+        if ($this->file instanceof UploadedFile)
+            return $this->file->getClientOriginalExtension();
 
-        if ($this->rawFile instanceof UploadedFile) {
-            $validation = Validator::make(
-                ['file' => new File($this->rawFile)],
-                ['file' => 'max:' . ((int)config('media.max_file_size') / 1024)]
-            );
-
-            return !$validation->fails();
-        }
-
-        return true;
+        throw UnknownType::create();
     }
 
-    protected function isValidMimetype(string $collectionName = 'default'): bool
+    protected function getMimeType()
+    {
+        foreach (config('media.valid_media_mimetype') as $type) {
+            if (strpos($type, $this->extension) !== false) {
+                return $type;
+            }
+        }
+
+        throw MimeTypeNotDefined::create($this->extension);
+    }
+
+    protected function isValidatedMimeType(string $collectionName = 'default'): bool
+    {
+        $this->setMediaFormat();
+
+        $this->setAllowedMimeType($collectionName);
+
+        return in_array($this->mimeType, $this->allowedMimeTypes);
+    }
+
+    protected function setAllowedMimeType(string $collectionName = 'default')
     {
         if ($collection = $this->getMediaCollection($collectionName)) {
             $this->allowedMimeTypes = Arr::flatten($collection->acceptsMimeTypes);
 
             if (empty($this->allowedMimeTypes)) {
-                $this->allowedMimeTypes = config('media.valid_media_mimetype');
+                $this->allowedMimeTypes = array_filter(config('media.valid_media_mimetype'),
+                    fn($item) => strpos($item, class_basename($this->mediaFormat)) !== false
+                );
             }
         }
-
-        if (is_string($this->rawFile)) {
-            $header = get_headers($this->rawFile, 1);
-            $type = $header["Content-Type"];
-
-            return in_array(strtolower($type), config('media.valid_media_mimetype'));
-        }
-
-        if ($this->rawFile instanceof UploadedFile) {
-            $validation = Validator::make(
-                ['file' => new File($this->rawFile)],
-                ['file' => 'mimetypes:' . implode(',', $this->allowedMimeTypes)]
-            );
-            return !$validation->fails();
-        }
-
-        return true;
     }
 
-    protected function getTemporaryFile(string $collectionName = 'default')
+    protected function setMediaFormat()
     {
-        $maxWidth = (int)config('media.max_file_width');
+        $type = explode('/', $this->mimeType)[0];
+        $class = 'k90mirzaei\\Media\\Support\\Formats\\' . ucwords($type);
+
+        if (!class_exists($class)) {
+            throw MediaFormatDoesNotExist::create($type);
+        }
+
+        $this->mediaFormat = new $class;
+    }
+
+    protected function isValidatedFileSize(string $collectionName = 'default'): bool
+    {
+        $maxFileSize = (int)config('media.max_file_size');
+
+        if (is_string($this->file)) {
+            $header = get_headers($this->file, 1);
+            $this->fileSize = $header["Content-Length"] ?? 0;
+        }
+
+        if ($this->file instanceof UploadedFile) {
+            $file = new File($this->file);
+            $this->fileSize = $file->getSize();
+        }
 
         if ($collection = $this->getMediaCollection($collectionName)) {
-            $maxWidth = $collection->maxWidth !== 0 ? $collection->maxWidth : $maxWidth;
+            $maxFileSize = $collection->maxFileSize > 0 ? $collection->maxFileSize : $maxFileSize;
         }
 
-        $file = $this->imageManager->make($this->rawFile)->encode($this->fileExtension);
-
-        if ($collection->fitResize != 0) {
-            if ($file->width() > $collection->fitResize) {
-                $newfile = $this->imageManager->make($this->rawFile)
-                    ->fit($collection->fitResize, null, function ($c) {
-                        $c->upsize();
-                    });
-
-            } else $newfile = $this->imageManager->make($this->rawFile)
-                ->fit($file->width(), null, function ($c) {
-                    $c->upsize();
-                });
-
-            $file->destroy();
-
-            return $newfile->encode($this->fileExtension);
-        }
-
-
-        if ($file->width() > $maxWidth) {
-            $file->destroy();
-
-            return $this->imageManager->make($this->rawFile)->resize($maxWidth, null, function ($c) {
-                $c->aspectRatio();
-                $c->upsize();
-            })->encode($this->fileExtension);
-        }
-
-        return $file;
+        return $this->fileSize <= $maxFileSize;
     }
 
-    protected function attachMedia(Media $media)
+    protected function isValidatedDisk(string $diskName, string $collectionName): bool
     {
-        $this->pathToFile = "$media->id/{$this->getFileNameToStore()}";
-
-        $this->uploadToStorage($media, $this->pathToFile, $this->file);
-
-        $this->setUploadSizeFile($media, $this->pathToFile, $this->file);
-
-        if ($collection = $this->getMediaCollection($media->collection_name)) {
-            if ($collection->generateResponsiveImages) {
-                $this->uploadResponsivesImage($media);
-            }
-
-            if ($collection->collectionSizeLimit) {
-                $collectionMedia = $this->subject->getMedia($media->collection_name);
-
-                if ($collectionMedia->count() > $collection->collectionSizeLimit) {
-                    $this->subject->clearMediaCollectionExcept($media->collection_name, $collectionMedia->reverse()->take($collection->collectionSizeLimit));
-                }
-            }
-        }
+        return $this->ensureDiskExists($this->diskName = $this->getDiskName($diskName, $collectionName));
     }
 
-    protected function setUploadSizeFile(Media $media, string $path, $file)
-    {
-        $this->fileSize = Storage::disk($media->disk)->size($path);
-
-        $media->update(['size' => $this->fileSize]);
-    }
-
-    protected function uploadToStorage(Media $media, string $path, $file)
-    {
-        if (strtolower($this->fileExtension) == 'gif') {
-            if ($this->file->filesize() > config('media.maxـgif_size')) {
-                $this->file->destroy();
-                throw new \Exception('حجم قابل قبول برای تصاویر gif حداکثر ' . MyFile::getHumanReadableSize(config('media.maxـgif_size')) . ' می‌باشد.');
-            }
-
-            $imagick = new \Imagick();
-            $imagick->readImage($this->rawFile);
-
-
-            // Save gif animation
-            Storage::disk($media->disk)->makeDirectory($media->id);
-            file_put_contents(public_path('storage/') . "um/$this->pathToFile", $imagick->getImagesBlob());
-
-            $imagick->destroy();
-
-            return true;
-        }
-
-        Storage::disk($media->disk)->put($path, $file->__toString());
-    }
-
-    protected function uploadResponsivesImage(Media $media)
-    {
-        $targetPaths = collect();
-
-        if ($this->fileExtension != 'gif') {
-            $widths = $this->calculateWidthsResponsives($this->fileSize, $this->file->width(), $this->file->height());
-
-            foreach ($widths as $width) {
-                $path = "/$media->id/$width/{$this->getFileNameToStore()}";
-
-                $file = $this->imageManager->make($this->file)->resize($width, null, function ($constraint) {
-                    $constraint->aspectRatio();
-                })->encode($this->fileExtension);
-
-                $this->uploadToStorage($media, $path, $file);
-
-                $targetPaths->push($path);
-            }
-        }
-
-        // save tiny placeholder
-        $tiny = $this->imageManager->make($this->file)->resize(20, null, function ($constraint) {
-            $constraint->aspectRatio();
-        })->blur(1)->encode($this->fileExtension);
-
-        $path = "/$media->id/tiny/{$this->getFileNameToStore()}";
-        $this->uploadToStorage($media, $path, $tiny);
-
-        $targetPaths->push($path);
-        $media->update(['responsive_images' => $targetPaths]);
-
-        $tiny->destroy();
-    }
-
-    protected function calculateWidthsResponsives(int $fileSize, int $width, int $height): Collection
-    {
-        $targetWidths = collect();
-
-        $ratio = $height / $width;
-        $area = $height * $width;
-
-        $predictedFileSize = $fileSize;
-        $pixelPrice = $predictedFileSize / $area;
-
-        while (true) {
-            $predictedFileSize *= 0.8;
-
-            $newWidth = (int)floor(sqrt(($predictedFileSize / $pixelPrice) / $ratio));
-
-            if ($this->finishedCalculating($predictedFileSize, $newWidth) || count($targetWidths) > 5) {
-                return $targetWidths;
-            }
-
-            if ($newWidth <= 1200)
-                $targetWidths->push($newWidth);
-        }
-    }
-
-    protected function finishedCalculating(int $predictedFileSize, int $newWidth): bool
-    {
-        if ($newWidth < 20) {
-            return true;
-        }
-
-        if ($predictedFileSize < (1024 * 50)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    protected function determineDiskName(string $diskName, string $collectionName): string
+    protected function getDiskName(string $diskName, string $collectionName): string
     {
         if ($diskName !== '') {
             return $diskName;
@@ -360,13 +209,19 @@ class FileAdder
             ->first(fn(MediaCollection $collection) => $collection->name === $collectionName);
     }
 
-    protected function getExtensionFromURL(): string
+    protected function attachMedia(Media $media, string $collectionName = 'default')
     {
-        return pathinfo($this->rawFile, PATHINFO_EXTENSION);
-    }
+        $collection = $this->getMediaCollection($collectionName);
 
-    protected function getFileNameToStore(): string
-    {
-        return $this->fileName . '.' . $this->fileExtension;
+        $this->mediaFormat->upload($this->file, $media, $collection);
+
+        if ($collection->collectionSizeLimit) {
+            $collectionMedia = $this->subject->getMedia($media->collection_name);
+
+            if ($collectionMedia->count() > $collection->collectionSizeLimit) {
+                $this->subject->clearMediaCollectionExcept($media->collection_name,
+                    $collectionMedia->reverse()->take($collection->collectionSizeLimit));
+            }
+        }
     }
 }

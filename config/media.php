@@ -12,42 +12,28 @@ return [
      * The maximum file size of an item in bytes.
      * Adding a larger file will result in an exception.
      */
-    'max_file_size' => 1024 * 1024 * 5,
-    'maxـgif_size' => 1024 * 1024 * 2,
-
-    /*
-     * The maximum file width of an item in pixel.
-     * Adding a larger file will transform to smaller one.
-     */
-    'max_file_width' => 800,
-    'max_gif_width' => 600,
+    'max_file_size' => 1024 * 1024 * 5, // 5 Mb
 
     /**
-     * Maximum size of each article images
+     *
      */
-    'max_posts_media_size' => 10 * 1024 * 1024,
-
-
-    /**
-     * Maximum size of each ticket attachment images
-     */
-    'max_ticket_file_size' => 2 * 1024 * 1024,
-
-
-    /**
-     * Maximum size of user avatar
-     */
-    'max_avatar_size' => 2 * 1024 * 1024,
+    'max_image_width' => 1920,
 
     /**
      * The whole acceptable formats in our package
      */
     'valid_media_mimetype' => [
+        'image/gif',
         'image/png',
         'image/jpeg',
         'image/jpg',
-        'image/gif',
-        'image/webp',
         'image/tif',
+        'image/webp',
+        'audio/mp3',
+        'audio/wav',
+        'audio/aiff',
+        'video/mp4',
+        'video/mov',
+        'video/webm',
     ]
 ];

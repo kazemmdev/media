@@ -1,7 +1,7 @@
 {
   "name": "k90mirzaei/media",
   "type": "library",
-  "description": "This is a media handler with intervention",
+  "description": "This is a media handler associate files with Eloquent models",
   "license": "MIT",
   "authors": [
     {
@@ -13,7 +13,8 @@
     "php": ">=7.4",
     "intervention/image": "^2.7",
     "ext-json": "*",
-    "ext-fileinfo": "*"
+    "ext-fileinfo": "*",
+    "ext-imagick": "*"
   },
   "require-dev": {
     "orchestra/testbench": "^6.23"

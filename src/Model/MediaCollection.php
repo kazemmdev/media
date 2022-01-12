@@ -10,7 +10,7 @@ class MediaCollection
 
     public int $maxWidth = 0;
 
-    public int $fitResize = 0;
+    public int $maxFileSize = 0;
 
     public array $acceptsMimeTypes = [];
 
@@ -65,9 +65,9 @@ class MediaCollection
         return $this;
     }
 
-    public function withFits(int $size): self
+    public function withMaxSize(int $size): self
     {
-        $this->fitResize = $size;
+        $this->maxFileSize = $size;
 
         return $this;
     }
