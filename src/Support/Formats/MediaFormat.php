@@ -14,7 +14,7 @@ abstract class MediaFormat
 
     protected function putFileIntoStorage(string $path, $file)
     {
-        Storage::disk($this->media->disk)->put($path, $file);
+        Storage::disk($this->media->disk)->put($path, $file->__toString());
     }
 
     abstract public function upload($file, Media $media, MediaCollection $mediaCollection);

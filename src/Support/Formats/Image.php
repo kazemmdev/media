@@ -28,7 +28,7 @@ class Image extends MediaFormat
             $this->processToOptimizeImage($mediaCollection);
         }
 
-        $this->putFileIntoStorage($this->media->getPath(), $file);
+        $this->putFileIntoStorage($this->media->getPath(), $this->file);
 
         if ($mediaCollection->generateResponsiveImages) {
             $this->media->update(['responsive_images' => $this->uploadResponsiveImage()]);
@@ -50,19 +50,22 @@ class Image extends MediaFormat
             $path = "/{$this->media->id}/{$width}/{$this->media->getFileName()}";
 
             $file = $this->imageManager->make($this->file)
-                ->resize($width, null, fn($constraint) => $constraint->aspectRatio())
+                ->resize($width, null, function ($constraint) {
+                    $constraint->aspectRatio();
+                })
                 ->encode($this->media->getExtension());
 
             $this->putFileIntoStorage($path, $file);
 
             $targetPaths->push($path);
 
-            $file->destroy();
         }
 
         // save tiny placeholder
         $tiny = $this->imageManager->make($this->file)
-            ->resize(20, null, fn($constraint) => $constraint->aspectRatio())
+            ->resize(20, null, function ($constraint) {
+                $constraint->aspectRatio();
+            })
             ->blur(1)->encode($this->media->getExtension());
 
         $path = "/{$this->media->id}/tiny/{$this->media->getFileName()}";
