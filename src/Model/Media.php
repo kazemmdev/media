@@ -56,7 +56,7 @@ class Media extends Model
                 if (!is_array($path_elements))
                     return $str;
 
-                $str .= UrlGenerator::setMedia($this)->getUrl($responsive) . $path_elements[2] !== 'tiny' ?
+                $str .= $path_elements[2] !== 'tiny' ? UrlGenerator::setMedia($this)->getUrl($responsive) .
                     " {$path_elements[2]}w, " : "";
             }
 
