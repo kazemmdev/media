@@ -36,7 +36,7 @@ class Media extends Model
 
     public function getPath(): string
     {
-        return "$this->id}/{$this->getFileName()}";
+        return "{$this->id}/{$this->getFileName()}";
     }
 
     public function getUrl(): string
